@@ -21,6 +21,7 @@ import {
   Clock,
   CheckCircle,
   Trash2,
+  XCircle,
 } from "lucide-react"
 
 interface Message {
@@ -117,12 +118,14 @@ export function ChatInterface() {
   const [inputValue, setInputValue] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [selectedSession, setSelectedSession] = useState("1")
+  const [sessions, setSessions] = useState<ChatSession[]>(mockSessions)
   const [showCodeInput, setShowCodeInput] = useState(false)
   const [codeSnippet, setCodeSnippet] = useState("")
   const [codeLanguage, setCodeLanguage] = useState("javascript")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const lastUserMessageRef = useRef<string>("")
   const [flagOpen, setFlagOpen] = useState(false)
+  const [isEnded, setIsEnded] = useState(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -134,6 +137,7 @@ export function ChatInterface() {
 
   const handleSendMessage = () => {
     if (!inputValue.trim()) return
+    if (isEnded) return
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -160,6 +164,77 @@ export function ChatInterface() {
       setMessages(prev => [...prev, hannahResponse])
       setIsTyping(false)
     }, 2000)
+  }
+
+  const handleNewChat = () => {
+    const id = Date.now().toString()
+    const newSession: ChatSession = {
+      id,
+      title: "Cuộc trò chuyện mới",
+      lastMessage: "",
+      timestamp: new Date(),
+      unread: 0,
+    }
+    setSessions(prev => [newSession, ...prev])
+    setSelectedSession(id)
+    setMessages([])
+    setInputValue("")
+    setShowCodeInput(false)
+    setIsEnded(false)
+  }
+
+  const handleOutOfKnowledge = () => {
+    // Add system message to indicate limitation and stop conversation
+    const notice: Message = {
+      id: (Date.now()).toString(),
+      content: "Xin lỗi, câu hỏi này vượt ngoài phạm vi kiến thức hiện tại. Cuộc trò chuyện sẽ được dừng và chuyển cho giảng viên xử lý.",
+      sender: "hannah",
+      timestamp: new Date(),
+      type: "text",
+    }
+    setMessages(prev => [...prev, notice])
+    setIsEnded(true)
+
+    // Flag the last AI message for Faculty review as a demo of the flow
+    try {
+      const stored = localStorage.getItem("hannah-flagged-responses")
+      const list = stored ? JSON.parse(stored) : []
+      const item = {
+        id: Date.now().toString(),
+        student: { name: "Sinh viên", id: "SV001", avatar: "/placeholder-user.jpg" },
+        question: lastUserMessageRef.current || "(Không xác định)",
+        aiResponse: notice.content,
+        confidence: 0.0,
+        date: new Date().toISOString(),
+        status: "pending",
+        priority: "high",
+      }
+      list.unshift(item)
+      localStorage.setItem("hannah-flagged-responses", JSON.stringify(list))
+    } catch {}
+
+    // Also persist this conversation to the conversations list for Faculty tab
+    try {
+      const stored = localStorage.getItem('hannah-flagged-conversations')
+      const convs = stored ? JSON.parse(stored) : []
+      const conversation = {
+        id: `${selectedSession}-${Date.now()}`,
+        sessionId: selectedSession,
+        title: (sessions.find((s) => s.id === selectedSession)?.title) || 'Cuộc trò chuyện',
+        flaggedAt: new Date().toISOString(),
+        messages: [...messages, notice].map(m => ({
+          id: m.id,
+          sender: m.sender,
+          type: m.type,
+          content: m.content,
+          timestamp: m.timestamp.toISOString(),
+        })),
+      }
+      convs.unshift(conversation)
+      localStorage.setItem('hannah-flagged-conversations', JSON.stringify(convs))
+    } catch {}
+
+    alert("⚠️ Out of Knowledge: Cuộc trò chuyện đã được dừng và chuyển cho Faculty.")
   }
 
   const handleFlagAiMessage = (aiMessage: Message) => {
@@ -201,7 +276,7 @@ export function ChatInterface() {
 
         {/* Sessions List */}
         <div className="flex-1 overflow-y-auto">
-          {mockSessions.map((session) => (
+          {sessions.map((session) => (
             <div
               key={session.id}
               className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
@@ -260,7 +335,7 @@ export function ChatInterface() {
 
         {/* New Chat Button */}
         <div className="p-4 border-t border-gray-200">
-          <Button className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700">
+          <Button className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700" onClick={handleNewChat}>
             <Zap className="h-4 w-4 mr-2" />
             Cuộc trò chuyện mới
           </Button>
@@ -290,6 +365,9 @@ export function ChatInterface() {
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="sm" onClick={() => alert('🔗 Chia sẻ đoạn chat (mô phỏng)')} title="Chia sẻ">
                 <Share2 className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleOutOfKnowledge} title="Dừng vì thiếu kiến thức">
+                <XCircle className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setFlagOpen(true)} title="Đánh dấu cần can thiệp">
                 <Flag className="h-4 w-4" />
@@ -376,6 +454,13 @@ export function ChatInterface() {
           
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Banner when ended */}
+        {isEnded && (
+          <div className="px-4 py-2 border-t border-gray-200 bg-amber-50 text-amber-900 text-sm">
+            Cuộc trò chuyện đã dừng do vượt ngoài phạm vi kiến thức. Vui lòng đợi giảng viên phản hồi hoặc bắt đầu cuộc trò chuyện mới.
+          </div>
+        )}
 
         {/* Quick Actions */}
         <div className="px-4 py-2 border-t border-gray-100">
@@ -478,6 +563,7 @@ export function ChatInterface() {
                     handleSendMessage()
                   }
                 }}
+                disabled={isEnded}
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -495,7 +581,7 @@ export function ChatInterface() {
               </Button>
               <Button
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim()}
+                disabled={!inputValue.trim() || isEnded}
                 className="bg-blue-500 hover:bg-blue-600"
                 title="Gửi tin nhắn"
               >
