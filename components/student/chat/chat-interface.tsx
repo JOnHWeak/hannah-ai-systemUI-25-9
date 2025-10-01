@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -21,7 +22,6 @@ import {
   Clock,
   CheckCircle,
   Trash2,
-  XCircle,
 } from "lucide-react"
 
 interface Message {
@@ -126,6 +126,10 @@ export function ChatInterface() {
   const lastUserMessageRef = useRef<string>("")
   const [flagOpen, setFlagOpen] = useState(false)
   const [isEnded, setIsEnded] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportMessage, setReportMessage] = useState<Message | null>(null)
+  const [reasonInaccurate, setReasonInaccurate] = useState(false)
+  const [reasonOffTopic, setReasonOffTopic] = useState(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -250,14 +254,31 @@ export function ChatInterface() {
         date: new Date().toISOString(),
         status: "pending",
         priority: "high",
+        reasons: [
+          ...(reasonInaccurate ? ["Câu trả lời không chính xác"] : []),
+          ...(reasonOffTopic ? ["Lạc đề"] : []),
+        ],
       }
       list.unshift(item)
       localStorage.setItem("hannah-flagged-responses", JSON.stringify(list))
-      alert("🚩 Đã báo sai/thiếu kiến thức. Phản hồi sẽ xuất hiện trong mục Faculty → Quản lý phản hồi.")
+      alert("📣 Đã gửi báo cáo. Phản hồi sẽ xuất hiện trong mục Faculty → Quản lý phản hồi.")
     } catch (e) {
       console.error("Flag error", e)
       alert("Không thể báo lỗi lúc này.")
     }
+  }
+
+  const openReportForMessage = (aiMessage: Message) => {
+    setReportMessage(aiMessage)
+    setReasonInaccurate(false)
+    setReasonOffTopic(false)
+    setReportOpen(true)
+  }
+
+  const submitReport = () => {
+    if (!reportMessage) return
+    handleFlagAiMessage(reportMessage)
+    setReportOpen(false)
   }
 
   const formatTime = (date: Date) => {
@@ -366,9 +387,6 @@ export function ChatInterface() {
               <Button variant="ghost" size="sm" onClick={() => alert('🔗 Chia sẻ đoạn chat (mô phỏng)')} title="Chia sẻ">
                 <Share2 className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleOutOfKnowledge} title="Dừng vì thiếu kiến thức">
-                <XCircle className="h-4 w-4" />
-              </Button>
               <Button variant="ghost" size="sm" onClick={() => setFlagOpen(true)} title="Đánh dấu cần can thiệp">
                 <Flag className="h-4 w-4" />
               </Button>
@@ -416,10 +434,10 @@ export function ChatInterface() {
                         variant="outline"
                         size="sm"
                         className="h-6 px-2 text-xs"
-                        onClick={() => handleFlagAiMessage(message)}
-                        title="Báo sai/thiếu kiến thức"
+                        onClick={() => openReportForMessage(message)}
+                        title="Báo cáo"
                       >
-                        🚩 Báo sai/thiếu
+                        🚩 Báo cáo
                       </Button>
                     </div>
                   )}
@@ -618,6 +636,29 @@ export function ChatInterface() {
               } catch {}
               setFlagOpen(false)
             }}>Xác nhận</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Report Dialog */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Báo cáo câu trả lời</DialogTitle>
+            <DialogDescription>Chọn lý do báo cáo cho câu trả lời của Hannah.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={reasonInaccurate} onCheckedChange={(v) => setReasonInaccurate(Boolean(v))} />
+              <span>Câu trả lời không chính xác</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={reasonOffTopic} onCheckedChange={(v) => setReasonOffTopic(Boolean(v))} />
+              <span>Lạc đề</span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setReportOpen(false)}>Hủy</Button>
+            <Button onClick={submitReport} disabled={!reasonInaccurate && !reasonOffTopic}>Gửi báo cáo</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
